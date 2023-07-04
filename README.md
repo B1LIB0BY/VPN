@@ -7,7 +7,7 @@ My project is a secure and encrypted virtual private network (VPN) implementatio
 
 ## Install
 ```
-git clone https://github.com/BiliSando/VPN.git
+git clone https://github.com/B1LIB0BY/VPN.git
 cd VPN/
 ```
 ### Server Machine:
