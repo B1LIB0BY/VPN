@@ -9,7 +9,8 @@
 #include <linux/if.h>
 #include <linux/if_tun.h>
 #include <netinet/in.h>
-
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #define SERVER_IP "10.0.0.29"  // Server IP address
 #define SERVER_PORT 7777       // Server port number
@@ -18,6 +19,8 @@
 #define VPN_SERVER_IP "10.8.0.1"
 #define NETMASK "255.255.0.0"
 #define MTU 1500
+
+
 
 int create_tun_device(char *dev)
 {
@@ -128,20 +131,44 @@ void delete_routing_config()
     printf("Routing configuration deleted successfully.\n");
 }
 
-
-
-int main() {
+int main()
+{
     int sockfd;
     struct sockaddr_in server_addr;
     char server_ip[] = SERVER_IP;
     int server_port = SERVER_PORT;
 
+    // Initialize OpenSSL
+    SSL_library_init();
+    OpenSSL_add_all_algorithms();
+    SSL_load_error_strings();
+    ERR_load_BIO_strings();
+
+    // Create SSL context
+    SSL_CTX *ctx = SSL_CTX_new(TLSv1_2_client_method());
+    if (ctx == NULL) {
+        perror("SSL_CTX_new");
+        exit(EXIT_FAILURE);
+    }
+
+    // Load CA certificate
+    if (!SSL_CTX_load_verify_locations(ctx, "cacert.pem", NULL)) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    // Create SSL connection
+    SSL *ssl;
+    ssl = SSL_new(ctx);
+
+    // Create socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     }
 
+    // Set up server address
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(server_port);
     if (inet_pton(AF_INET, server_ip, &(server_addr.sin_addr)) <= 0) {
@@ -149,30 +176,49 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    // Connect to the server
     if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Connection failed");
         exit(EXIT_FAILURE);
     }
 
+    // Attach SSL connection to the socket
+    SSL_set_fd(ssl, sockfd);
+
+    // Perform SSL handshake
+    if (SSL_connect(ssl) != 1) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    // Verify the server certificate
+    if (SSL_get_verify_result(ssl) != X509_V_OK) {
+        fprintf(stderr, "Server certificate verification failed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Receive data from the server
     char buffer[1024];
-    int recv_bytes = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+    int recv_bytes = SSL_read(ssl, buffer, sizeof(buffer) - 1);
     if (recv_bytes == -1) {
         perror("Receive failed");
         exit(EXIT_FAILURE);
     }
 
+    // Null-terminate the received data
     buffer[recv_bytes] = '\0';
 
+    // Print the received data
     printf("Received: %s\n", buffer);
-
 
     char Client_ip[1024];
     strcpy(Client_ip, buffer);
-    printf("the client_ip is: %s", Client_ip);
+    printf("The client IP is: %s\n", Client_ip);
     int tun_fd;
     char tun_name[] = TUN_NAME;
-    printf("the tun device is: %s", tun_name);
+    printf("The tun device is: %s\n", tun_name);
 
+    // Create the TUN device
     tun_fd = create_tun_device(tun_name);
     if (tun_fd < 0) {
         fprintf(stderr, "Failed to create TUN device\n");
@@ -190,6 +236,7 @@ int main() {
 
     printf("TUN interface configured: IP=%s, Netmask=%s\n", Client_ip, NETMASK);
 
+    // Configure routing
     if (configure_routing() < 0) {
         fprintf(stderr, "Failed to configure routing\n");
         close(tun_fd);
@@ -204,6 +251,12 @@ int main() {
 
     delete_routing_config();
 
+    // Close SSL connection and free SSL context
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
+
+    // Close the socket
     close(sockfd);
 
     return 0;
