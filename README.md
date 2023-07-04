@@ -22,3 +22,5 @@ gcc -o Client Client.c -lssl -lcrypto
 sudo ./Client
 
 ```
+
+#### Do not use this project for a real purpose, the project was written as a personal project and not for a real purpose!
