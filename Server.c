@@ -37,19 +37,16 @@ SSL_CTX* create_ssl_context()
 {
     SSL_CTX* ctx;
 
-    // Step 0: OpenSSL library initialization
     SSL_library_init();
     SSL_load_error_strings();
     OpenSSL_add_ssl_algorithms();
 
-    // Step 1: Create a new SSL_CTX object as framework for TLS/SSL-enabled functions
     ctx = SSL_CTX_new(TLS_server_method());
     if (ctx == NULL) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
 
-    // Step 2: Set up the server certificate and private key
     if (SSL_CTX_use_certificate_file(ctx, "./cert_server/servercrt.pem", SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
@@ -59,14 +56,12 @@ SSL_CTX* create_ssl_context()
         exit(EXIT_FAILURE);
     }
 
-    // Step 3: Set up the trusted CA certificate locations, if needed
-    // For example, to load CA certificates from a file:
+    // Set up the trusted CA certificate locations, if needed
     if (!SSL_CTX_load_verify_locations(ctx, NULL, "./cert_server/cacert.pem")) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
 
-    // Step 4: Verify client certificates (optional)
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
 
     return ctx;
@@ -178,18 +173,15 @@ void add_client(struct iplookup** head, int size, bool available, SSL* ssl, pid_
         current->next = new_client;
     }
 
-    // Send data to the client
     const char* message = new_client->ip;
     ssize_t bytes_sent = SSL_write(ssl, message, strlen(message));
     if (bytes_sent == -1) {
         perror("write");
-        // Handle error if needed
     }
     else {
         printf("[+] Message sent to the client\n");
     }
 
-    // Close the client socket
     SSL_shutdown(ssl);
     SSL_free(ssl);
     close(client_socket);
@@ -283,28 +275,27 @@ int main()
     SSL* ssl;
     int err;
 
-    // Step 0: OpenSSL library initialization
-    // This step is no longer needed as of version 1.1.0.
     SSL_library_init();
     SSL_load_error_strings();
     SSLeay_add_ssl_algorithms();
 
-    // Step 1: SSL context initialization.
+    // SSL context initialization.
     meth = (SSL_METHOD*)TLSv1_2_method();
 
     ctx = SSL_CTX_new(meth);
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
-    // Step 2: Set up the server certificate and private key
+    //Set up the server certificate and private key
     SSL_CTX_use_certificate_file(ctx, "./cert_server/servercrt.pem", SSL_FILETYPE_PEM);
     SSL_CTX_use_PrivateKey_file(ctx, "./cert_server/serverkey.pem", SSL_FILETYPE_PEM);
-    // Step 3: Create a new SSL structure for a connection
+    // Create a new SSL structure for a connection
     ssl = SSL_new(ctx);
 
     // TCP server.
     int server_socket, client_socket;
     struct sockaddr_in client_address;
     socklen_t client_address_length;
-    // Create a TCP socket
+    
+
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
         perror("socket");
@@ -324,10 +315,10 @@ int main()
             exit(EXIT_FAILURE);
         }
 
-        // Step 4: Attach the SSL session to the socket descriptor
+        // Attach the SSL session to the socket descriptor
         SSL_set_fd(ssl, client_socket);
 
-        // Step 5: Perform SSL handshake
+        // Perform SSL handshake
         err = SSL_accept(ssl);
         if (err <= 0) {
             ERR_print_errors_fp(stderr);
@@ -335,9 +326,9 @@ int main()
             continue;
         }
 
-        // Step 6: Verify client certificate (optional)
+        // Verify client certificate (optional)
 
-        // Step 7: Create a new process for the client
+        // Create a new process for the client
         pid_t pid = fork();
         if (pid == -1) {
             perror("fork");
